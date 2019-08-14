@@ -13,7 +13,7 @@ func Interval(v time.Duration) Option {
 	}
 }
 
-func OnPublishFunc(fn func(status int, err error)) Option {
+func OnPublishFunc(fn func(*http.Response, error)) Option {
 	return func(c *Client) {
 		c.onPublishFunc = fn
 	}

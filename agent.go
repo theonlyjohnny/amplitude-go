@@ -14,11 +14,18 @@ import (
 const (
 	DefaultQueueSize = 250
 	ApiEndpoint      = "https://api.amplitude.com/httpapi"
+
+	// TODO look into using the Identify endpoint
+	// https://github.com/msingleton/amplitude-go/blob/master/client.go#L60
+	// IdentifyEndpoint = "https://api.amplitude.com/identify"
 )
 
+// There is a character limit of 1024 characters for all string values
+// https://help.amplitude.com/hc/en-us/articles/204771828#string-character-limit
+
 type Event struct {
-	UserId             string                 `json:"user_id,omitempty"`
-	DeviceId           string                 `json:"device_id,omitempty"`
+	UserID             string                 `json:"user_id,omitempty"`
+	DeviceID           string                 `json:"device_id,omitempty"`
 	EventType          string                 `json:"event_type,omitempty"`
 	Time               time.Time              `json:"-"`
 	TimeInMillis       int64                  `json:"timestamp,omitempty"`
@@ -41,7 +48,7 @@ type Event struct {
 	Revenue            float64                `json:"revenu,omitempty"`
 	Lat                float64                `json:"lat,omitempty"`
 	Lon                float64                `json:"lon,omitempty"`
-	Ip                 string                 `json:"ip,omitempty"`
+	IP                 string                 `json:"ip,omitempty"`
 	IDFA               string                 `json:"idfa,omitempty"`
 	ADID               string                 `json:"adid,omitempty"`
 }
@@ -54,23 +61,24 @@ type Client struct {
 	flush         chan chan struct{}
 	queueSize     int
 	interval      time.Duration
-	onPublishFunc func(status int, err error)
+	onPublishFunc func(*http.Response, error)
 	httpClient    *http.Client
+	Timeout       time.Duration
 }
 
 func New(apiKey string, options ...Option) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	client := &Client{
-		cancel:        cancel,
-		ctx:           ctx,
-		apiKey:        apiKey,
-		ch:            make(chan Event, DefaultQueueSize),
-		flush:         make(chan chan struct{}),
-		queueSize:     DefaultQueueSize,
-		interval:      time.Second * 15,
-		onPublishFunc: func(status int, err error) {},
-		httpClient:    http.DefaultClient,
+		cancel:     cancel,
+		ctx:        ctx,
+		apiKey:     apiKey,
+		Timeout:    time.Second * 10,
+		ch:         make(chan Event, DefaultQueueSize),
+		flush:      make(chan chan struct{}),
+		queueSize:  DefaultQueueSize,
+		interval:   time.Second * 15,
+		httpClient: http.DefaultClient,
 	}
 
 	for _, opt := range options {
@@ -91,22 +99,20 @@ func (c *Client) Publish(e Event) error {
 	case c.ch <- e:
 		return nil
 	default:
-		return fmt.Errorf("Unable to send event, queue is full.  Use a larger queue size or create more workers.")
+		return fmt.Errorf("Amplitude: Unable to send event, queue is full")
 	}
 }
 
-func (c *Client) Event(e map[string]interface{}) error {
-	if _, ok := e["user_id"]; ok {
-		return fmt.Errorf("missing required parameter: user_id")
+// Event requires UserID and EventType to be set
+func (c *Client) Event(e Event) error {
+	if e.UserID == "" {
+		return fmt.Errorf("Amplitude: missing required parameter: UserID")
 	}
-	if _, ok := e["event_type"]; ok {
-		return fmt.Errorf("missing required parameter: event_type")
+	if e.EventType == "" {
+		return fmt.Errorf("Amplitude: missing required parameter: EventType")
 	}
 
-	return c.Publish(Event{
-		UserId:    fmt.Sprintf("%v", e["user_id"]),
-		EventType: fmt.Sprintf("%v", e["event_type"]),
-	})
+	return c.Publish(e)
 }
 
 func (c *Client) start() {
@@ -157,12 +163,12 @@ func (c *Client) publish(events []Event) error {
 	params.Set("api_key", c.apiKey)
 	params.Set("event", string(data))
 
-	ctx, _ := context.WithTimeout(context.Background(), time.Second*10)
+	ctx, _ := context.WithTimeout(context.Background(), c.Timeout)
 	resp, err := ctxhttp.PostForm(ctx, c.httpClient, ApiEndpoint, params)
 	if resp != nil {
 		defer resp.Body.Close()
 	}
-	c.onPublishFunc(resp.StatusCode, err)
+	c.onPublishFunc(resp, err)
 
 	return err
 }
