@@ -167,6 +167,8 @@ func (c *Client) publish(events []Event) {
 	resp, err := ctxhttp.PostForm(ctx, c.httpClient, ApiEndpoint, params)
 	if resp != nil {
 		defer resp.Body.Close()
+	} else {
+		resp = &http.Response{}
 	}
 
 	c.onPublishFunc(resp, err)
