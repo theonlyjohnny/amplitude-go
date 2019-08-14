@@ -153,10 +153,10 @@ func (c *Client) start() {
 	}
 }
 
-func (c *Client) publish(events []Event) error {
+func (c *Client) publish(events []Event) {
 	data, err := json.Marshal(events)
 	if err != nil {
-		return err
+		c.onPublishFunc(&http.Response{}, err)
 	}
 
 	params := url.Values{}
@@ -168,9 +168,8 @@ func (c *Client) publish(events []Event) error {
 	if resp != nil {
 		defer resp.Body.Close()
 	}
-	c.onPublishFunc(resp, err)
 
-	return err
+	c.onPublishFunc(resp, err)
 }
 
 func (c *Client) Flush() {
