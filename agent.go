@@ -167,7 +167,7 @@ func (c *Client) publish(events []Event) {
 		c.onPublishFunc(&http.Response{}, err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	ctx, cancel := context.WithTimeout(c.ctx, c.Timeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, "POST", c.apiEndpoint, bytes.NewBuffer(data))
 	if err != nil {
