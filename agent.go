@@ -1,19 +1,18 @@
 package amplitude
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/url"
 	"time"
 
-	"golang.org/x/net/context"
-	"golang.org/x/net/context/ctxhttp"
+	"context"
 )
 
 const (
 	DefaultQueueSize = 250
-	ApiEndpoint      = "https://api.amplitude.com/httpapi"
+	ApiEndpoint      = "https://api.amplitude.com/2/httpapi"
 
 	// TODO look into using the Identify endpoint
 	// https://github.com/msingleton/amplitude-go/blob/master/client.go#L60
@@ -156,21 +155,37 @@ func (c *Client) start() {
 }
 
 func (c *Client) publish(events []Event) {
-	data, err := json.Marshal(events)
+	body := struct {
+		Events []Event `json:"events"`
+		APIKey string  `json:"api_key"`
+	}{
+		events,
+		c.apiKey,
+	}
+	data, err := json.Marshal(body)
 	if err != nil {
 		c.onPublishFunc(&http.Response{}, err)
 	}
 
-	params := url.Values{}
-	params.Set("api_key", c.apiKey)
-	params.Set("event", string(data))
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "POST", c.apiEndpoint, bytes.NewBuffer(data))
+	if err != nil {
+		c.onPublishFunc(&http.Response{}, err)
+	}
 
-	ctx, _ := context.WithTimeout(context.Background(), c.Timeout)
-	resp, err := ctxhttp.PostForm(ctx, c.httpClient, c.apiEndpoint, params)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "*/*")
+
+	resp, err := c.httpClient.Do(req)
 	if resp != nil {
 		defer resp.Body.Close()
 	} else {
 		resp = &http.Response{}
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
+		err = fmt.Errorf("non-200 status code: %d", resp.StatusCode)
 	}
 
 	c.onPublishFunc(resp, err)
