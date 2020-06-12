@@ -64,21 +64,23 @@ type Client struct {
 	onPublishFunc func(*http.Response, error)
 	httpClient    *http.Client
 	Timeout       time.Duration
+	apiEndpoint   string
 }
 
 func New(apiKey string, options ...Option) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	client := &Client{
-		cancel:     cancel,
-		ctx:        ctx,
-		apiKey:     apiKey,
-		Timeout:    time.Second * 10,
-		ch:         make(chan Event, DefaultQueueSize),
-		flush:      make(chan chan struct{}),
-		queueSize:  DefaultQueueSize,
-		interval:   time.Second * 15,
-		httpClient: http.DefaultClient,
+		cancel:      cancel,
+		ctx:         ctx,
+		apiKey:      apiKey,
+		Timeout:     time.Second * 10,
+		ch:          make(chan Event, DefaultQueueSize),
+		flush:       make(chan chan struct{}),
+		queueSize:   DefaultQueueSize,
+		interval:    time.Second * 15,
+		httpClient:  http.DefaultClient,
+		apiEndpoint: ApiEndpoint,
 	}
 
 	for _, opt := range options {
@@ -164,7 +166,7 @@ func (c *Client) publish(events []Event) {
 	params.Set("event", string(data))
 
 	ctx, _ := context.WithTimeout(context.Background(), c.Timeout)
-	resp, err := ctxhttp.PostForm(ctx, c.httpClient, ApiEndpoint, params)
+	resp, err := ctxhttp.PostForm(ctx, c.httpClient, c.apiEndpoint, params)
 	if resp != nil {
 		defer resp.Body.Close()
 	} else {

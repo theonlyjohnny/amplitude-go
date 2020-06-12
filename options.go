@@ -24,3 +24,9 @@ func HTTPClient(httpClient *http.Client) Option {
 		c.httpClient = httpClient
 	}
 }
+
+func APIEndpoint(apiEndpoint string) Option {
+	return func(c *Client) {
+		c.apiEndpoint = apiEndpoint
+	}
+}
